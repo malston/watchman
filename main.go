@@ -77,6 +77,10 @@ func main() {
 	consumer := noaa.NewConsumer(*dopplerEndpoint, &tls.Config{InsecureSkipVerify: true}, nil)
 
 	httpStartStopProcessor := processors.NewHttpStartStopProcessor()
+	valueMetricProcessor := processors.NewValueMetricProcessor()
+	containerMetricProcessor := processors.NewContainerMetricProcessor()
+	heartbeatProcessor := processors.NewHeartbeatProcessor()
+	counterProcessor := processors.NewCounterProcessor()
 	sender := statsd.NewStatsdClient(*statsdAddress, *statsdPrefix)
 	sender.CreateSocket()
 
@@ -101,16 +105,24 @@ func main() {
 		eventType := msg.GetEventType()
 
 		switch eventType {
+		case events.Envelope_ContainerMetric:
+			processedMetrics = containerMetricProcessor.Process(msg)
+		case events.Envelope_CounterEvent:
+			processedMetrics = counterProcessor.Process(msg)
+		case events.Envelope_Heartbeat:
+			processedMetrics = heartbeatProcessor.Process(msg)
 		case events.Envelope_HttpStartStop:
 			processedMetrics = httpStartStopProcessor.Process(msg)
+		case events.Envelope_ValueMetric:
+			processedMetrics = valueMetricProcessor.Process(msg)
 		default:
-			atomic.AddUint64(&count, 1)
 			// do nothing
 		}
 
 		if len(processedMetrics) > 0 {
 			for _, metric := range processedMetrics {
 				metric.Send(sender)
+				atomic.AddUint64(&count, 1)
 			}
 		}
 		processedMetrics = nil
